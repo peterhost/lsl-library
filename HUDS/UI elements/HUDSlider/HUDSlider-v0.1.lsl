@@ -5,8 +5,8 @@
 //*********************************************************************
 // HUD Slider - v 0.1
 //
-// by:		Peter Host (Pete Atolia inworld)
-// License:	BSD, but please provide patches/bugfixes if you can!
+// by:        Peter Host (Pete Atolia inworld)
+// License:    BSD, but please provide patches/bugfixes if you can!
 //
 // Description: provides a slider in one prim to be linked to a HUD.
 //              slider speaks it's position on chat channel
@@ -124,7 +124,10 @@ init_hard() {
 
 // in case we need that
 restorePrimShape() {
-        llSetPrimitiveParams( [PRIM_ROTATION, llEuler2Rot(<0, PI_BY_TWO, PI + PI_BY_TWO>)] );
+        //llSetPrimitiveParams( [PRIM_ROTATION, llEuler2Rot(<0, PI_BY_TWO, PI + PI_BY_TWO>)] );
+        //llSetPrimitiveParams( [PRIM_ROTATION, llEuler2Rot(<0, PI_BY_TWO,-PI_BY_TWO>)] );
+        llSetLocalRot( llEuler2Rot(<0, PI_BY_TWO,-PI_BY_TWO>));
+        //llSetRot(  llEuler2Rot(<0, PI_BY_TWO, PI_BY_TWO>) );
         list params = [  9,
                          0,
                          0,
@@ -181,6 +184,7 @@ default
 {
     state_entry()
     {
+        restorePrimShape();
         init(); 
         updateColorGlobs(TRUE);
         //llOwnerSay("init completed");      
@@ -196,6 +200,7 @@ default
         llOffsetTexture(0.5 - primPos.x, 0.666, 5);
         updateColorGlobs(FALSE);
         //llSay(0, "Touched.");
+       
         
     }
     
