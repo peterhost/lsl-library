@@ -71,7 +71,10 @@
 //      // vector lookAt
 // 3) drop the notecard in the prim
 // 4) drop this script in the prim
-// 5) touch it :)
+// 5) touch it... BANG !
+//
+// 6) note : each time you modify the notecard ,the teleporter auto-updates
+//           (no need to reset the script)
 //____________________________________________________________________
 
 
@@ -100,14 +103,14 @@ key gQueryID;   // ID of
 integer gLine;  // current line being read
 
 
-                            //  type:   1   2   3
+                            //  TPtype: 1   2   3
 integer teleportType;       //          x   x   x   type of osTeleportAgent call (1, 2 or 3)
 string  TPdescription;      //          x   x   x
 string  destinationTarget;  //          x
 integer regionX;            //              x
 integer regionY;            //              x
 vector position;            //          x   x   x
-vector lookAt;               //          x   x   x
+vector lookAt;              //          x   x   x
 
 
 key avatarKey;  // as name suggests
