@@ -1,0 +1,23 @@
+// type 1 (any address)
+// string TPdescription
+// string destinationTarget
+// vector position
+// vector lookAt
+
+// type 2 (local grid)
+// string TPdescription
+// integer regionX
+//  integer regionY
+//  vector position
+// vector lookAt
+
+// type 3 (current region)
+// string TPdescription
+//  vector position
+// vector lookAt
+
+1
+Miki Kiti Tiki (Nice desert Island)
+tikitronic.com:9000:Miki Kiti Tiki
+<135,121,21>
+<149,119,100>
