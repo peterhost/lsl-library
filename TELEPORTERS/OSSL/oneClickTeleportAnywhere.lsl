@@ -83,7 +83,10 @@
 //....................................................................
 
 integer debug = TRUE;      
-                         
+     
+list TPcolors = [<1,1,0>, <0,1,0>, <1,1,1>]; // colors for hovertext 
+                                             // (one per teleportType)
+                    
 //....................................................................
 //                         COMPUTED
 //....................................................................
@@ -150,7 +153,7 @@ loadSettings() {
     else {
         error("the notecard in this teleporter is not well configured.\n --> could not find teleportation type");
     }
-    llSetText("Touch to teleport to \n" + TPdescription, <0,1,0>, 1);
+    llSetText("Instant Teleport to \n" + TPdescription, (vector)( (string)llList2List(TPcolors, teleportType -1, teleportType -1) ), 1);
 }
 
 
