@@ -3,23 +3,27 @@
 ///                       --HUD Slider--                              *
 //                                                                    *
 //*********************************************************************
-// HUD Slider - v 0.1
+// HUD Slider - v 0.2
 //
-// by:        Peter Host (Pete Atolia inworld)
-// License:    BSD, but please provide patches/bugfixes if you can!
+// by:          Peter Host (Pete Atolia inworld)
+// License:     BSD, but please provide patches/bugfixes if you can!
 //
-// Description: provides a slider in one prim to be linked to a HUD.
-//              slider speaks it's position on chat channel
+// Description: provides a slider in one prim to be linked to a HUD
+//              or standalone.
+//              Slider either sends its position (0-100 number) :
+//                  - on chat channel (default)
+//                  - as llMessageLinked()
+//                  - to an avatar, by IM
 //
 // Usage: 1) add the texture in the same directory to a prim cube
+//           ("slidingbar-grey.png")
 //        2) place this script in the prim
 //        3) let the script initialize 
 //        4) do whatever you want with the slider
 //
-//        this script just says the slider position as a 0-100 number
-//        (adjust variable HUDchannel)
-
-
+// Nota :   this slider both supports touch and drag, though drag
+//          might be slow according to what region-server/script-engine
+//          the script runs in
 //____________________________________________________________________
 //                          GLOBAL variables
 //....................................................................
@@ -37,6 +41,7 @@ integer resetOnRez = TRUE;  // disable if you don't want the prim to be
                             // resized to 'primScale' on prim Rez
                             // as texture positioning on a slider is tricky
                             // you might need it to restore the defaults
+integer resetOnScriptInit = TRUE; // same for script init
                             
 integer textOn = TRUE;      // false to disable percentage display
 
@@ -44,7 +49,8 @@ integer textOn = TRUE;      // false to disable percentage display
 // slider color/texture
 string sliderTexture;       // put a name here if you wish the HUD to
                             // use a specific texture instead of the
-                            // first one it finds
+                            // first one it finds. In which case, you
+                            // should set resetOnRez to FALSE 
 
                             // three zones defining slider's color
 integer slowLimit = 20;     //%  blue (0-100)
@@ -54,9 +60,21 @@ integer safeLimit = 60;     //%  green (0-100)
 integer primCOn = TRUE;     // false to disable slider color change
 
 // communication
-integer HUDchannel = 999;
-integer sayPercent = TRUE;  // true : the script reports the 'percent' on channel HUDchannel
+                                        // choose one :
+integer communicationMethod = 1;        // 0 : llMessageLinked(...)
+                                        // 1 : llSay(message, HUDchannel);
+                                        // 2 : llInstantMessage() --> NB : only touch_end() updating due
+                                        //                                 to the 2 sec. delay
+                                        // then set one of these :
+integer linkedTarget = LINK_ALL_OTHERS; // --> prim(s) to report to if communicationMethod is set to "0"
+                                        //     LINK_ROOT, LINK_SET, LINK_ALL_OTHERS, LINK_ALL_CHILDREN,
+                                        //     LINK_THIS, or prim linknumber
+integer HUDchannel = 999;               // --> channel to report to if communicationMethod is set to "1"
+key controllerAgent = "";               // --> key of avatar to report to if communicationMethod is set to "2"
+                                        //     (default is script owner)
 
+// debug
+integer debug = FALSE;           
 
                                  
 //....................................................................
@@ -67,7 +85,8 @@ vector UV;
 integer percent = 50;       // the slider's (output) value
 vector textColor;
 vector primColor;
-
+key me;
+string meName;
 
 //____________________________________________________________________
 //                          Initialization
@@ -79,7 +98,11 @@ init() {
     llSetTexture(TEXTURE_TRANSPARENT,0);
     llSetTexture(TEXTURE_TRANSPARENT,1);
     llSetTexture(TEXTURE_TRANSPARENT,3);
-
+    // eye candy for HUD
+    if (!llGetAttached()){
+        llSetTexture(TEXTURE_TRANSPARENT,2);
+        llSetTexture(TEXTURE_TRANSPARENT,4);
+    }
     
     // a virer
     llSetColor(<1,1,1>, ALL_SIDES);
@@ -87,9 +110,12 @@ init() {
     // TEXTURES
     //note: face indexes for HUD attachement of this object
     
-    llSetTexture(sliderTexture, 2);
-    llSetTexture(sliderTexture, 4);
     llSetTexture(sliderTexture, 5);
+    // eye candy for HUD
+    if (llGetAttached()) {
+        llSetTexture(sliderTexture, 2);
+        llSetTexture(sliderTexture, 4);
+    }
 
     //front face (5)
 
@@ -100,6 +126,7 @@ init() {
     llOffsetTexture(0.5 - primPos.x, 0.666, 5); // hover effect
     llOffsetTexture(0.5 - primPos.x, 0, 5);     // do this so that it's "loaded"
     
+
     //right face (2)
     
     llScaleTexture(0.02,0.333333,2);
@@ -112,12 +139,17 @@ init() {
     llRotateTexture(-PI_BY_TWO, 4);
     llOffsetTexture(0.98,0.333,4);
 
+    
+    // communicationMethod ==2, default is script owner's avatar
+    if (controllerAgent == "" && communicationMethod == 2) controllerAgent = llGetOwner();
 
-
+    // who am i ?
+    me = llGetKey();
+    meName = llKey2Name(me);
 }
 
 init_hard() {
-    if (resetOnRez) restorePrimShape();
+    if (resetOnRez || resetOnScriptInit) restorePrimShape();
     init();
     
 }
@@ -173,9 +205,30 @@ updateColorGlobs(integer init) { //don't update prim color if init == TRUE
 
 }
 
-sayResult() {
-    if (sayPercent) llSay(HUDchannel, (string)percent);   
+announceResult(integer eventType) {                         // eventType :  0 -> from touch()   
+                                                            //              1 --> from touch_end()
+    string result = (string)percent;
+    // from touch(), and method is NOT llInstantMessage()
+    if          (eventType == 0 && communicationMethod != 2) {       
+        if          (communicationMethod == 0)  llMessageLinked(linkedTarget, 0, meName, result);
+        else                                    llSay(HUDchannel, result);   
+    // from any touch event
+    } else if   (eventType == 1) {
+        if          (communicationMethod == 0)  llMessageLinked(linkedTarget, 0, meName, result);
+        else if     (communicationMethod == 2)  llInstantMessage(controllerAgent, result);
+        else                                    llSay(HUDchannel, result);        
+    // unknown eventType
+    } else return;
 }
+
+//____________________________________________________________________
+//                         MISC
+//....................................................................
+dbg(string msg) {
+    if (debug) llOwnerSay(msg);
+}
+
+
 //____________________________________________________________________
 //                          STATES
 //....................................................................
@@ -184,8 +237,7 @@ default
 {
     state_entry()
     {
-        restorePrimShape();
-        init(); 
+        init_hard(); 
         updateColorGlobs(TRUE);
         //llOwnerSay("init completed");      
     }
@@ -219,7 +271,7 @@ default
             
             percent = llFloor( 100 * (primPos.x - 0.02 ) / 0.96 );
             updateColorGlobs(FALSE);
-            sayResult();          
+            announceResult(0);          
 
         }
         //else llOwnerSay("out of coords!!");
@@ -231,6 +283,8 @@ default
         //llSay(0, "end touch"); 
         llOffsetTexture(0.5 - primPos.x, 0, 5);
         if (primCOn) llSetColor(<1,1,1>, ALL_SIDES);
+        updateColorGlobs(FALSE);
+        announceResult(1);
     }
 
 
