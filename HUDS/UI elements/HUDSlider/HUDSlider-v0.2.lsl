@@ -4,6 +4,7 @@
 //                                                                    *
 //*********************************************************************
 // HUD Slider - v 0.2
+// Highly customizable Sliding Bar
 //
 // by:          Peter Host (Pete Atolia inworld)
 // License:     BSD, but please provide patches/bugfixes if you can!
@@ -14,6 +15,8 @@
 //                  - on chat channel (default)
 //                  - as llMessageLinked()
 //                  - to an avatar, by IM
+//              You can customize the result's scale to whatever you like
+//              in the "//custom scale" section
 //
 // Usage: 1) add the texture in the same directory to a prim cube
 //           ("slidingbar-grey.png")
@@ -30,6 +33,8 @@
 //                         USER
 //....................................................................
 
+
+//.................
 // slider UI params
 vector primPos = <0.5,0,0>; // only the x comonent (slider initial
                             // position) matters
@@ -46,6 +51,7 @@ integer resetOnScriptInit = TRUE; // same for script init
 integer textOn = TRUE;      // false to disable percentage display
 
 
+//.....................
 // slider color/texture
 string sliderTexture;       // put a name here if you wish the HUD to
                             // use a specific texture instead of the
@@ -57,8 +63,25 @@ integer slowLimit = 20;     //%  blue (0-100)
 integer safeLimit = 60;     //%  green (0-100)
                             // over that : red
 
-integer primCOn = TRUE;     // false to disable slider color change
+integer primCOn = TRUE;     // FALSE to disable slider color change
 
+integer disableDrag = FALSE;// TRUE to disable dragging slider
+
+//.............
+// custom scale
+
+                            // by default the slider annouces an integer number
+                            // between 0 and 100. If you wish for it to announce
+                            // something else, set the following two parameters.
+                            // [100, 0], [0.1, -0.5], [12, 24.999],...
+                            // NB : these parameters only affect slider's output 
+                            //      (hovering text and message), all inner functions
+                            //      still use a [0-100] integer (slowLimit, safeLimit,...)
+float minScale;
+float maxScale;
+string scaleUnit = "%";     // change to whatever your scale unit is, or ""
+
+//..............
 // communication
                                         // choose one :
 integer communicationMethod = 0;        // 0 : llMessageLinked(...)
@@ -75,6 +98,7 @@ integer regionWide = FALSE;             // --> TRUE : use llRegionSay instead of
 key controllerAgent = "";               // --> key of avatar to report to if communicationMethod is set to "2"
                                         //     (default is script owner)
 
+//......
 // debug
 integer debug = FALSE;           
 
@@ -89,6 +113,7 @@ vector textColor;
 vector primColor;
 key me;
 string meName;
+float converted;            // converted output value in case minScale/maxScale are used
 
 //____________________________________________________________________
 //                          Initialization
@@ -188,6 +213,19 @@ reloadTexture() {
 //                          UI
 //....................................................................
 
+updateCoords() {    // called on touch() and touch_end() events
+                    // computes the slider position
+    primPos = llDetectedTouchST(0);
+    
+    // carefull on the borders
+    if (primPos.x >= 0.02 && primPos.x <= 0.98 ) llOffsetTexture(0.5 - primPos.x , 0.666, 5);
+    else if (primPos.x < 0.02) primPos.x = 0.02;
+    else primPos.x = 0.98;
+    
+    percent = llFloor( 100 * (primPos.x - 0.02 ) / 0.96 );    
+}
+
+
 updateColorGlobs(integer init) { //don't update prim color if init == TRUE
     if (percent < slowLimit) {
         textColor = <0.5,0.5,1>;
@@ -203,20 +241,20 @@ updateColorGlobs(integer init) { //don't update prim color if init == TRUE
         primColor =  <0.8,1,0.8>;
     }
     
-    if (textOn) llSetText((string)(percent) + "%", textColor,1);
+    if (textOn) llSetText(convert() + scaleUnit, textColor,1);
     if (primCOn && !init) llSetColor(primColor, ALL_SIDES);    
 
 }
 
 announceResult(integer eventType) {                         // eventType :  0 -> from touch()   
                                                             //              1 --> from touch_end()
-    string result = (string)percent;
+    string result = convert();
     // from touch(), and method is NOT llInstantMessage()
     if          (eventType == 0 && communicationMethod != 2) {       
         if          (communicationMethod == 0)  llMessageLinked(linkedTarget, 0, meName, result);
         else if (regionWide)                    llRegionSay(HUDchannel, result);
         else                                    llSay(HUDchannel, result);   
-    // from any touch event
+    // from touch_end() event
     } else if   (eventType == 1) {
         if          (communicationMethod == 0)  llMessageLinked(linkedTarget, 0, meName, result);
         else if     (communicationMethod == 2)  llInstantMessage(controllerAgent, result);
@@ -229,6 +267,19 @@ announceResult(integer eventType) {                         // eventType :  0 ->
 //____________________________________________________________________
 //                         MISC
 //....................................................................
+
+// converts output message from [0-100] integer to []
+string convert() {
+    if (minScale && maxScale) {
+        llOwnerSay("conversion ON");
+        return (string)(minScale + ((float)percent / 100) * (maxScale - minScale) );
+    }
+    else {
+        llOwnerSay("no conversion");
+        return (string)percent;
+    }
+}
+
 dbg(string msg) {
     if (debug) llOwnerSay(msg);
 }
@@ -252,6 +303,7 @@ default
         init_hard();
     }
 
+
     touch_start(integer total_number)
     {
         llOffsetTexture(0.5 - primPos.x, 0.666, 5);
@@ -261,35 +313,33 @@ default
         
     }
     
+    
     touch(integer total_number)
     {
+        if (!disableDrag) { // skip if disableDrag == TRUE
             
-        // only detect touches on the front face (5)
-        if (llDetectedTouchFace(0) == 5) {
-            
-            primPos = llDetectedTouchST(0);
-            
-            // carefull on the borders
-            if (primPos.x >= 0.02 && primPos.x <= 0.98 ) llOffsetTexture(0.5 - primPos.x , 0.666, 5);
-            else if (primPos.x < 0.02) primPos.x = 0.02;
-            else primPos.x = 0.98;
-            
-            percent = llFloor( 100 * (primPos.x - 0.02 ) / 0.96 );
-            updateColorGlobs(FALSE);
-            announceResult(0);          
-
-        }
-        //else llOwnerSay("out of coords!!");
-          
+            if (llDetectedTouchFace(0) == 5) { // only detect touches on the front face (5)        
+                updateCoords();
+                updateColorGlobs(FALSE);
+                announceResult(0);          
+            }
+            //else llOwnerSay("out of coords!!");
+        }   
     }
+    
     
     touch_end(integer total_number)
     {
-        //llSay(0, "end touch"); 
-        llOffsetTexture(0.5 - primPos.x, 0, 5);
-        if (primCOn) llSetColor(<1,1,1>, ALL_SIDES);
-        updateColorGlobs(FALSE);
-        announceResult(1);
+        if (disableDrag || communicationMethod == 2) {  // triggers for :   - llInstantMessage (in all cases)
+                                                        //                  - llSay, llMessageLinked, if drag is disabled
+                                                        //                    (otherwise handled by touch() event)
+            //llSay(0, "end touch"); 
+            llOffsetTexture(0.5 - primPos.x, 0, 5);
+            if (primCOn) llSetColor(<1,1,1>, ALL_SIDES);
+            updateCoords();
+            updateColorGlobs(FALSE);
+            announceResult(1);
+        }
     }
 
 
