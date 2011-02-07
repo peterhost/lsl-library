@@ -61,7 +61,7 @@ integer primCOn = TRUE;     // false to disable slider color change
 
 // communication
                                         // choose one :
-integer communicationMethod = 1;        // 0 : llMessageLinked(...)
+integer communicationMethod = 0;        // 0 : llMessageLinked(...)
                                         // 1 : llSay(message, HUDchannel);
                                         // 2 : llInstantMessage() --> NB : only touch_end() updating due
                                         //                                 to the 2 sec. delay
@@ -70,6 +70,8 @@ integer linkedTarget = LINK_ALL_OTHERS; // --> prim(s) to report to if communica
                                         //     LINK_ROOT, LINK_SET, LINK_ALL_OTHERS, LINK_ALL_CHILDREN,
                                         //     LINK_THIS, or prim linknumber
 integer HUDchannel = 999;               // --> channel to report to if communicationMethod is set to "1"
+integer regionWide = FALSE;             // --> TRUE : use llRegionSay instead of llSay if communicationMethod
+                                        //     is set to "1". NB : HUDchannel can't be set to 0 (PUBLIC_CHANNEL)
 key controllerAgent = "";               // --> key of avatar to report to if communicationMethod is set to "2"
                                         //     (default is script owner)
 
@@ -146,6 +148,7 @@ init() {
     // who am i ?
     me = llGetKey();
     meName = llKey2Name(me);
+    
 }
 
 init_hard() {
@@ -211,11 +214,13 @@ announceResult(integer eventType) {                         // eventType :  0 ->
     // from touch(), and method is NOT llInstantMessage()
     if          (eventType == 0 && communicationMethod != 2) {       
         if          (communicationMethod == 0)  llMessageLinked(linkedTarget, 0, meName, result);
+        else if (regionWide)                    llRegionSay(HUDchannel, result);
         else                                    llSay(HUDchannel, result);   
     // from any touch event
     } else if   (eventType == 1) {
         if          (communicationMethod == 0)  llMessageLinked(linkedTarget, 0, meName, result);
         else if     (communicationMethod == 2)  llInstantMessage(controllerAgent, result);
+        else if     (regionWide)                llRegionSay(HUDchannel, result);
         else                                    llSay(HUDchannel, result);        
     // unknown eventType
     } else return;
@@ -290,3 +295,52 @@ default
 
 
 }
+
+//____________________________________________________________________
+// Note on use of channel listeners :
+// (http://wiki.secondlife.com/wiki/LlListen)
+//
+//       1. Chat that is said gets added to a history.
+//       2. A script that is running and has a listen event will ask the history for a chat message
+//          during its slice of run time.
+//       3. When the script asks the history for a chat message the checks are done in this order:
+//              * channel
+//              * self chat (prims can't hear themselves)
+//              * distance/RegionSay
+//              * key
+//              * name
+//              * message 
+//       4. If a message is found then a listen event is added to the event queue. 
+//
+//    The key/name/message checks only happen at all if those are specified of course. 
+//    So, the most efficient way is llRegionSay on a rarely used channel.
+//
+//____________________________________________________________________
+// basic test :
+//
+// drop this script in another prim, and link/unink it to the slider while changing communicationMethod
+//
+//
+//string sliderName = "slidingbar" // change this to reflect your settings
+//default
+//{
+//    state_entry()
+//    {
+//        llListen(999, sliderName, "", "");
+//    }
+//    
+//    
+//    listen(integer channel, string name, key id, string message) {
+//        llOwnerSay("SAY " + message);
+//    }
+//    
+//    
+//    link_message( integer sibling, integer num, string mesg, key target_key ) {
+//        if ( mesg == sliderName ) {
+//            llOwnerSay("LINK " + (string)target_key);
+//        }           
+//    }
+//
+//    
+//}
+//____________________________________________________________________
