@@ -80,6 +80,7 @@ integer disableDrag = FALSE;// TRUE to disable dragging slider
 float minScale;
 float maxScale;
 string scaleUnit = "%";     // change to whatever your scale unit is, or ""
+integer showDecimals = FALSE;   // true to show decimals in hover text (2 decimals)
 
 //..............
 // communication
@@ -270,14 +271,33 @@ announceResult(integer eventType) {                         // eventType :  0 ->
 
 // converts output message from [0-100] integer to []
 string convert() {
+    
     if (minScale && maxScale) {
-        dbg("conversion ON");
-        return (string)(minScale + ((float)percent / 100) * (maxScale - minScale) );
+        float res = (minScale + ((float)percent / 100) * (maxScale - minScale) );
+        if (showDecimals) { // show 2 decimals
+            return formatDecimal(res, 2);            
+        } else return (string)(llRound(res));
     }
-    else {
-        dbg("no conversion");
-        return (string)percent;
+    else return (string)percent;
+
+}
+
+string formatDecimal(float number, integer precision)
+{    
+    float roundingValue = llPow(10, -precision)*0.5;
+    float rounded;
+    if (number < 0) rounded = number - roundingValue;
+    else            rounded = number + roundingValue;
+ 
+    if (precision < 1) // Rounding integer value
+    {
+        integer intRounding = (integer)llPow(10, -precision);
+        rounded = (integer)rounded/intRounding*intRounding;
+        precision = -1; // Don't truncate integer value
     }
+ 
+    string strNumber = (string)rounded;
+    return llGetSubString(strNumber, 0, llSubStringIndex(strNumber, ".") + precision);
 }
 
 dbg(string msg) {

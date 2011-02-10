@@ -28,8 +28,10 @@
 //                  - save                          //saves slider params to notecard       (first notecard found in inventory)
 //
 //                  - textOnOff     boolean         //sets textOn to boolean
+//                  - showDecimals  boolean         //sets showDecimals to boolean
 //
 //                  - limits        <x,y,z>         //sets limits : slowLimit = x, safeLimit = y, z ignored
+//                                                  //              regardless of setRange, provide [0-100] integers
 //                  - primCon       boolean         //sets primCon to boolean
 //                  - disableDrag   boolean         //sets disableDrag to boolean
 //                  - setRange      <x,y,z>         //sets minScale = x, maxScale = y, z ignored
@@ -97,7 +99,7 @@ string sliderTexture;       // put a name here if you wish the HUD to
                             // should set resetOnRez to FALSE 
 
                             // three zones defining slider's color (blue under green limit, green inbetween, red over green limit)
-vector limits = <5, 20, 0>; // < blue (0-100), green (0-100), ignored >
+vector limits = <10, 20, 0>; // < blue (0-100), green (0-100), ignored >
 
 integer primCon = TRUE;     // FALSE to disable slider color change
 
@@ -115,7 +117,8 @@ integer disableDrag = FALSE;// TRUE to disable dragging slider
                             //      still use a [0-100] integer (limit,...)
 float minScale = -200;
 float maxScale = 1800;
-string scaleUnit = " meters";     // change to whatever your scale unit is, or ""
+string scaleUnit = " meters";   // change to whatever your scale unit is, or ""
+integer showDecimals = FALSE;   // true to show decimals in hover text (2 decimals)
 
 //..............
 // communication
@@ -140,7 +143,7 @@ key controllerAgent = "";               // --> key of avatar to report to if tal
 // 2 - LISTEN
                                         // script listens to llMessageLinked by default, as this does not
                                         // add to lag. BUT it will only open a listen channel if you neet to 
-integer chatListen = FALSE;             // alter slider settings via chat commands
+integer chatListen = TRUE;             // alter slider settings via chat commands
                                         //
                                         // if chatListen == TRUE, be as specific as you can afford,
                                         // in setting the following. Those authentification params can
@@ -244,7 +247,8 @@ init_soft() {
         // setup a listener if the chatListen == TRUE
         llListenRemove(ChatlistenerHandle);
         ChatlistenerHandle = llListen(listenChannel, listen2Name, listen2ID, "");
-    }     
+    }
+    else llListenRemove(ChatlistenerHandle); // remove last callback in case chatListen has just been set to FALSE 
 }
 
 //....................................................................
@@ -341,16 +345,22 @@ executeOrder(string mesg) {
     else if (command == "textOnOff"){
         if ( (integer)arg) textOn = TRUE;
         else textOn = FALSE;
+        updateSliderAppearance();
+    }
+    else if (command == "showDecimals"){
+        if ( (integer)arg) showDecimals = TRUE;
+        else showDecimals = FALSE;
+        updateSliderAppearance();
     }
     else if (command == "primCon"){
         if ( (integer)arg) primCon = TRUE;
         else primCon = FALSE;
+        updateSliderAppearance();
     }
     else if (command == "disableDrag"){
         if ( (integer)arg) disableDrag = TRUE;
         else disableDrag = FALSE;
     }    
-
     else if (command == "regionWide"){
         if ( (integer)arg) regionWide = TRUE;
         else regionWide = FALSE;
@@ -361,11 +371,6 @@ executeOrder(string mesg) {
         else chatListen = FALSE;
         init_soft();
     }     
-    else if (command == "chatListen"){
-        if ( (integer)arg) chatListen = TRUE;
-        else chatListen = FALSE;
-        init_soft();
-    }        
     else if (command == "listenChannel") {
         listenChannel = (integer)arg;
         init_soft();
@@ -382,17 +387,22 @@ executeOrder(string mesg) {
     else if (command == "HUDchannel") HUDchannel = (integer)arg;
     else if (command == "linkedTarget") linkedTarget = (integer)arg;
     else if (command == "talkMethod") talkMethod = (integer)arg;
-    else if (command == "scaleUnit") scaleUnit = arg;
+    else if (command == "scaleUnit") {
+        scaleUnit = arg;
+        updateSliderAppearance();
+    }
     else if (command == "limits") {
         limits = (vector)arg;
-        updateColorGlobs(FALSE);
+        updateSliderAppearance();
     }
     else if (command == "setRange") {
         vector tmpvect = (vector)arg;
         minScale = tmpvect.x;
         maxScale = tmpvect.y;
-        updateColorGlobs(FALSE);
+        updateSliderAppearance();
+        dbg((string)tmpvect);
     }
+    else dbg("Unknown command");
         
 
 }
@@ -414,7 +424,7 @@ updateCoords() {    // called on touch() and touch_end() events
 }
 
 
-updateColorGlobs(integer init) { //don't update prim color if init == TRUE
+updateSliderAppearance() { //don't update prim color if init == TRUE
     if (percent < limits.x) {
         textColor = <0.5,0.5,1>;
         primColor =  <0.8,0.8,1>;
@@ -430,7 +440,9 @@ updateColorGlobs(integer init) { //don't update prim color if init == TRUE
     }
     
     if (textOn) llSetText(convert() + scaleUnit, textColor,1);
-    if (primCon && !init) llSetColor(primColor, ALL_SIDES);    
+    else llSetText("", textColor, 1);
+ 
+    if (primCon) llSetColor(primColor, ALL_SIDES);   
 
 }
 
@@ -441,15 +453,36 @@ updateColorGlobs(integer init) { //don't update prim color if init == TRUE
 
 // converts output message from [0-100] integer to []
 string convert() {
+    
     if (minScale && maxScale) {
-        dbg("conversion ON");
-        return (string)(minScale + ((float)percent / 100) * (maxScale - minScale) );
+        float res = (minScale + ((float)percent / 100) * (maxScale - minScale) );
+        if (showDecimals) { // show 2 decimals
+            return formatDecimal(res, 2);            
+        } else return (string)(llRound(res));
     }
-    else {
-        dbg("no conversion");
-        return (string)percent;
-    }
+    else return (string)percent;
+
 }
+
+
+string formatDecimal(float number, integer precision)
+{    
+    float roundingValue = llPow(10, -precision)*0.5;
+    float rounded;
+    if (number < 0) rounded = number - roundingValue;
+    else            rounded = number + roundingValue;
+ 
+    if (precision < 1) // Rounding integer value
+    {
+        integer intRounding = (integer)llPow(10, -precision);
+        rounded = (integer)rounded/intRounding*intRounding;
+        precision = -1; // Don't truncate integer value
+    }
+ 
+    string strNumber = (string)rounded;
+    return llGetSubString(strNumber, 0, llSubStringIndex(strNumber, ".") + precision);
+}
+
 
 
 string FreeMem()
@@ -475,7 +508,7 @@ default
     state_entry()
     {
         init_hard(); 
-        updateColorGlobs(TRUE);
+        updateSliderAppearance();
         dbg(FreeMem());      
     }
     
@@ -494,7 +527,7 @@ default
     touch_start(integer total_number)
     {
         llOffsetTexture(0.5 - primPos.x, 0.666, 5);
-        updateColorGlobs(FALSE);
+        updateSliderAppearance();
         //llSay(0, "Touched.");
        
         
@@ -507,7 +540,7 @@ default
             
             if (llDetectedTouchFace(0) == 5) { // only detect touches on the front face (5)        
                 updateCoords();
-                updateColorGlobs(FALSE);
+                updateSliderAppearance();
                 announceResult(0);          
             }
             //else dbg("out of coords!!");
@@ -522,9 +555,9 @@ default
                                                         //                    (otherwise handled by touch() event)
             //llSay(0, "end touch"); 
             llOffsetTexture(0.5 - primPos.x, 0, 5);
-            if (primCon) llSetColor(<1,1,1>, ALL_SIDES);
+            if (!primCon) llSetColor(<1,1,1>, ALL_SIDES);
             updateCoords();
-            updateColorGlobs(FALSE);
+            updateSliderAppearance();
             announceResult(1);
         }
     }
