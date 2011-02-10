@@ -1,22 +1,36 @@
 //*********************************************************************
 //                                                                    *
-//                        --HUD Slider--                              *
+//                    --HUD Slider with Listener--                    *
 //                                                                    *
 //*********************************************************************
-// HUD Slider - v 0.2
-// Highly customizable Sliding Bar
+// HUD Slider with Listener - v 0.1
+// Highly customizable Sliding Bar, with listener (takes commands)
 //
 // by:          Peter Host (Pete Atolia inworld)
 // License:     BSD, but please provide patches/bugfixes if you can!
 //
-// Description: provides a slider in one prim to be linked to a HUD
-//              or standalone.
-//              Slider either sends its position (0-100 number) :
+// Description: * provides a slider in one prim to be linked to a HUD
+//                or standalone.
+//              * Slider either sends its position (0-100 number) :
 //                  - on chat channel (default)
 //                  - as llMessageLinked()
 //                  - to an avatar, by IM
-//              You can customize the result's scale to whatever you like
-//              in the "//custom scale" section
+//              * Slider can take commands sent either by chat or llMessageLinked
+//                to issue it's current position, or modify some of its parameters
+//                Valid commands are :
+//                  - init                          //reset slider's params
+//                  - initHard                      //reset all slider's params (including prim shape)
+//                  - tellPosition                  //reports slider's position
+//                  - textOnOff     boolean         //sets textOn to boolean
+//                  - limits        <x,y,z>         //sets slowLimit = x, safeLimit = y, z ignored
+//                  - primCon       boolean         //sets primCOn to boolean
+//                  - disableDrag   boolean         //sets disableDrag to boolean
+//                  - setRange      <x,y,z>         //sets minScale = x, maxScale = y, z ignored
+//                  - scaleUnit     string          //sets scaleUnit to string
+
+
+//              * You can customize the result's scale to whatever you like
+//                in the "//custom scale" section
 //
 // Usage: 1) add the texture in the same directory to a prim cube
 //           ("slidingbar-grey.png")
@@ -59,8 +73,8 @@ string sliderTexture;       // put a name here if you wish the HUD to
                             // should set resetOnRez to FALSE 
 
                             // three zones defining slider's color
-integer slowLimit = 20;     //%  blue (0-100)
-integer safeLimit = 60;     //%  green (0-100)
+integer slowLimit = 5;     //%  blue (0-100)
+integer safeLimit = 20;     //%  green (0-100)
                             // over that : red
 
 integer primCOn = TRUE;     // FALSE to disable slider color change
@@ -77,30 +91,46 @@ integer disableDrag = FALSE;// TRUE to disable dragging slider
                             // NB : these parameters only affect slider's output 
                             //      (hovering text and message), all inner functions
                             //      still use a [0-100] integer (slowLimit, safeLimit,...)
-float minScale;
-float maxScale;
-string scaleUnit = "%";     // change to whatever your scale unit is, or ""
+float minScale = -200;
+float maxScale = 1800;
+string scaleUnit = " meters";     // change to whatever your scale unit is, or ""
 
 //..............
 // communication
+
+// 1 - TALK
                                         // choose one :
-integer communicationMethod = 0;        // 0 : llMessageLinked(...)
+integer talkMethod = 0;                 // 0 : llMessageLinked(...)
                                         // 1 : llSay(message, HUDchannel);
                                         // 2 : llInstantMessage() --> NB : only touch_end() updating due
                                         //                                 to the 2 sec. delay
                                         // then set one of these :
-integer linkedTarget = LINK_ALL_OTHERS; // --> prim(s) to report to if communicationMethod is set to "0"
+integer linkedTarget = LINK_ALL_OTHERS; // --> prim(s) to report to if talkMethod is set to "0"
                                         //     LINK_ROOT, LINK_SET, LINK_ALL_OTHERS, LINK_ALL_CHILDREN,
                                         //     LINK_THIS, or prim linknumber
-integer HUDchannel = 999;               // --> channel to report to if communicationMethod is set to "1"
-integer regionWide = FALSE;             // --> TRUE : use llRegionSay instead of llSay if communicationMethod
+integer HUDchannel = 999;               // --> channel to report to if talkMethod is set to "1"
+integer regionWide = FALSE;             // --> TRUE : use llRegionSay instead of llSay if talkMethod
                                         //     is set to "1". NB : HUDchannel can't be set to 0 (PUBLIC_CHANNEL)
-key controllerAgent = "";               // --> key of avatar to report to if communicationMethod is set to "2"
+key controllerAgent = "";               // --> key of avatar to report to if talkMethod is set to "2"
                                         //     (default is script owner)
+
+
+// 2 - LISTEN
+                                        // script listens to llMessageLinked by default, as this does not
+                                        // add to lag. BUT it will only open a listen channel if you neet to 
+integer chatListen = FALSE;             // alter slider settings via chat commands
+                                        //
+                                        // if chatListen == TRUE, be as specific as you can afford,
+                                        // in setting the following. Those authentification params can
+                                        // also be used for llMessageLinked authentification
+                                        
+integer listenChannel;                  // defaults to HUDchannel
+string  listen2Name;                    // only listen to prims with this name; default ""
+key     listen2ID;                      // only listen to the prim with this UUID
 
 //......
 // debug
-integer debug = FALSE;           
+integer debug = TRUE;           
 
                                  
 //....................................................................
@@ -114,7 +144,7 @@ vector primColor;
 key me;
 string meName;
 float converted;            // converted output value in case minScale/maxScale are used
-
+integer ChatlistenerHandle;
 //____________________________________________________________________
 //                          Initialization
 //....................................................................
@@ -167,12 +197,21 @@ init() {
     llOffsetTexture(0.98,0.333,4);
 
     
-    // communicationMethod ==2, default is script owner's avatar
-    if (controllerAgent == "" && communicationMethod == 2) controllerAgent = llGetOwner();
+    // talkMethod ==2, default is script owner's avatar
+    if (controllerAgent == "" && talkMethod == 2) controllerAgent = llGetOwner();
 
     // who am i ?
     me = llGetKey();
     meName = llKey2Name(me);
+    
+    // optionnal chat listener
+    if (chatListen) {
+        // set listen channel to default if not set (even if not used)
+        if (!listenChannel) listenChannel = HUDchannel;
+        // setup a listener if the chatListen == TRUE
+        llListenRemove(ChatlistenerHandle);
+        ChatlistenerHandle = llListen(listenChannel, listen2Name, listen2ID, "");
+    }    
     
 }
 
@@ -208,6 +247,51 @@ reloadTexture() {
     
 }
 
+
+//____________________________________________________________________
+//                          LISTENING / SPEAKING
+//....................................................................
+
+
+announceResult(integer eventType) {                         // eventType :  0 -> from touch()   
+                                                            //              1 --> from touch_end()
+                                                            //              2 --> from executeOrder()
+    string result = convert();
+    // from touch(), and method is NOT llInstantMessage()
+    if          (eventType == 0 && talkMethod != 2) {       
+        if          (talkMethod == 0)  llMessageLinked(linkedTarget, 0, meName, result);
+        else if (regionWide)                    llRegionSay(HUDchannel, result);
+        else                                    llSay(HUDchannel, result);   
+    // from touch_end() event
+    } else if   (eventType == 1 || eventType == 2) {
+        if          (talkMethod == 0)  llMessageLinked(linkedTarget, 0, meName, result);
+        else if     (talkMethod == 2)  llInstantMessage(controllerAgent, result);
+        else if     (regionWide)                llRegionSay(HUDchannel, result);
+        else                                    llSay(HUDchannel, result);        
+    // unknown eventType
+    } else return;
+}
+
+
+executeOrder(string order, vector bob) {
+}
+
+
+executeOrder(string mesg) {
+    // 1 - parse order
+    list tmpOrder = llParseString2List(mesg, " ", ""); 
+    string command = (string)llList2List(tmpOrder, 0, 0);
+    string argument = (string)llList2List(tmpOrder, 1, 1);
+    
+    // 2 - execute order  
+    if (order == "tellPosition") announceResult(2); // slider reports its position (to whomever in the universe, listens)
+    else if (order == "setRange") {                 // slider answers with
+        vector
+    } 
+    //else if (order == "savePresets")                // slider saves presets in notecard
+    else if (order == "init") init();
+
+}
 
 //____________________________________________________________________
 //                          UI
@@ -246,23 +330,6 @@ updateColorGlobs(integer init) { //don't update prim color if init == TRUE
 
 }
 
-announceResult(integer eventType) {                         // eventType :  0 -> from touch()   
-                                                            //              1 --> from touch_end()
-    string result = convert();
-    // from touch(), and method is NOT llInstantMessage()
-    if          (eventType == 0 && communicationMethod != 2) {       
-        if          (communicationMethod == 0)  llMessageLinked(linkedTarget, 0, meName, result);
-        else if (regionWide)                    llRegionSay(HUDchannel, result);
-        else                                    llSay(HUDchannel, result);   
-    // from touch_end() event
-    } else if   (eventType == 1) {
-        if          (communicationMethod == 0)  llMessageLinked(linkedTarget, 0, meName, result);
-        else if     (communicationMethod == 2)  llInstantMessage(controllerAgent, result);
-        else if     (regionWide)                llRegionSay(HUDchannel, result);
-        else                                    llSay(HUDchannel, result);        
-    // unknown eventType
-    } else return;
-}
 
 //____________________________________________________________________
 //                         MISC
@@ -280,6 +347,16 @@ string convert() {
     }
 }
 
+
+string FreeMem()
+{
+//float mempct = (100 * llGetFreeMemory() / (float)(16*1024)); // for non-MONO
+float mempct = (100 * llGetFreeMemory() / (float)(64*1024)); // for MONO
+string percent = llGetSubString((string)mempct,0,4); // displays 75.25%
+string memtmpA = (string)(llGetFreeMemory()/1024)+"k ("+percent+"%)";
+return memtmpA;
+}
+
 dbg(string msg) {
     if (debug) llOwnerSay(msg);
 }
@@ -295,13 +372,19 @@ default
     {
         init_hard(); 
         updateColorGlobs(TRUE);
-        //dbg("init completed");      
+        dbg(FreeMem());      
     }
     
     on_rez(integer start_param)
     {
         init_hard();
     }
+
+
+
+    //________________________________________________________________
+    //                           UI commands
+    //________________________________________________________________
 
 
     touch_start(integer total_number)
@@ -330,7 +413,7 @@ default
     
     touch_end(integer total_number)
     {
-        if (disableDrag || communicationMethod == 2) {  // triggers for :   - llInstantMessage (in all cases)
+        if (disableDrag || talkMethod == 2) {  // triggers for :   - llInstantMessage (in all cases)
                                                         //                  - llSay, llMessageLinked, if drag is disabled
                                                         //                    (otherwise handled by touch() event)
             //llSay(0, "end touch"); 
@@ -342,12 +425,34 @@ default
         }
     }
 
+    //________________________________________________________________
+    //                           LISTENERS
+    //________________________________________________________________
+
+    // 1 - llMESSAGELINKED (better)
+    link_message( integer sender_num, integer num, string mesg, key mesg2 ) {   // mesg  is either a name or a key
+                                                                                // mesg2 is of the type "command parameter"
+        dbg("reveived llMessageLinked order: " + mesg + " -- " + mesg2);
+        key iskey = (key)mesg2;
+                                                                           
+        if      (iskey && (iskey == listen2ID   || !listen2ID)  )   executeOrder(mesg); // valid key && authorized key if authorisation set
+        else if ( mesg2 == listen2Name          || !listen2Name )   executeOrder(mesg); // authorized name || null
+    }
+    
+    // 2 - llLISTEN
+    listen(integer channel, string name, key id, string mesg) // message is of the type "command parameter"
+    {
+        // filtering has already be done by the llListen() call
+        dbg("received llSay order: " + mesg);
+        executeOrder(mesg);        
+    }
+
 
 
 }
 
 //____________________________________________________________________
-// Note on use of channel listeners :
+// Note on wise use of channel listeners :
 // (http://wiki.secondlife.com/wiki/LlListen)
 //
 //       1. Chat that is said gets added to a history.
@@ -368,7 +473,7 @@ default
 //____________________________________________________________________
 // basic test :
 //
-// drop this script in another prim, and link/unink it to the slider while changing communicationMethod
+// drop this script in another prim, and link/unink it to the slider while changing talkMethod
 //
 //
 //string sliderName = "slidingbar" // change this to reflect your settings
