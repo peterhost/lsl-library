@@ -17,26 +17,50 @@
 //                  - to an avatar, by IM
 //              * Slider can take commands sent either by chat or llMessageLinked
 //                to issue it's current position, or modify some of its parameters
+//                Invalid commands fail silently
 //                Valid commands are :
+//
+//                  - tellPosition                  //reports slider's position
+//
 //                  - init                          //reset slider's params
 //                  - initHard                      //reset all slider's params (including prim shape)
-//                  - tellPosition                  //reports slider's position
+//                  - reload                        //reloads slider params from notecard   (first notecard found in inventory)
+//                  - save                          //saves slider params to notecard       (first notecard found in inventory)
+//
 //                  - textOnOff     boolean         //sets textOn to boolean
-//                  - limits        <x,y,z>         //sets slowLimit = x, safeLimit = y, z ignored
-//                  - primCon       boolean         //sets primCOn to boolean
+//
+//                  - limits        <x,y,z>         //sets limits : slowLimit = x, safeLimit = y, z ignored
+//                  - primCon       boolean         //sets primCon to boolean
 //                  - disableDrag   boolean         //sets disableDrag to boolean
 //                  - setRange      <x,y,z>         //sets minScale = x, maxScale = y, z ignored
 //                  - scaleUnit     string          //sets scaleUnit to string
-
-
+//
+//                  - talkMethod    integer         //sets talkMethod to integer (0, 1, 2)
+//                  - linkedTarget = integer        //-2 LINK_ALL_OTHERS, 1 LINK_ROOT, -1 LINK_SET, -2 LINK_ALL_OTHERS,
+//                                                  //-3 LINK_ALL_CHILDREN, -4 LINK_THIS, or prim linknumber
+//                  - HUDchannel    integer
+//                  - regionWide    boolean
+//                  - controllerAgent UUID
+//
+//                  - chatListen    boolean
+//                  - listenChannel integer
+//                  - listen2Name   string
+//                  - listen2ID     key
+//
+//              * Notecard-DRIVEN : you need to initialize this slider script with an
+//                appropriate notecard (see below)
+//
 //              * You can customize the result's scale to whatever you like
 //                in the "//custom scale" section
 //
 // Usage: 1) add the texture in the same directory to a prim cube
 //           ("slidingbar-grey.png")
-//        2) place this script in the prim
-//        3) let the script initialize 
-//        4) do whatever you want with the slider
+//        2) add the sample notecard in the same directory to the prim (named "params", or 
+//           otherwise, the first notecard found in inventory will be used)
+//        3) edit the notecard if you wish to change params
+//        4) place this script in the prim
+//        5) let the script initialize 
+//        6) do whatever you want with the slider
 //
 // Nota :   this slider both supports touch and drag, though drag
 //          might be slow according to what region-server/script-engine
@@ -72,12 +96,10 @@ string sliderTexture;       // put a name here if you wish the HUD to
                             // first one it finds. In which case, you
                             // should set resetOnRez to FALSE 
 
-                            // three zones defining slider's color
-integer slowLimit = 5;     //%  blue (0-100)
-integer safeLimit = 20;     //%  green (0-100)
-                            // over that : red
+                            // three zones defining slider's color (blue under green limit, green inbetween, red over green limit)
+vector limits = <5, 20, 0>; // < blue (0-100), green (0-100), ignored >
 
-integer primCOn = TRUE;     // FALSE to disable slider color change
+integer primCon = TRUE;     // FALSE to disable slider color change
 
 integer disableDrag = FALSE;// TRUE to disable dragging slider
 
@@ -90,7 +112,7 @@ integer disableDrag = FALSE;// TRUE to disable dragging slider
                             // [100, 0], [0.1, -0.5], [12, 24.999],...
                             // NB : these parameters only affect slider's output 
                             //      (hovering text and message), all inner functions
-                            //      still use a [0-100] integer (slowLimit, safeLimit,...)
+                            //      still use a [0-100] integer (limit,...)
 float minScale = -200;
 float maxScale = 1800;
 string scaleUnit = " meters";     // change to whatever your scale unit is, or ""
@@ -197,13 +219,24 @@ init() {
     llOffsetTexture(0.98,0.333,4);
 
     
-    // talkMethod ==2, default is script owner's avatar
-    if (controllerAgent == "" && talkMethod == 2) controllerAgent = llGetOwner();
 
     // who am i ?
     me = llGetKey();
     meName = llKey2Name(me);
     
+   init_soft();
+    
+}
+
+//....................................................................
+// only reset global-variable-dependant settings (to update
+// slider without reseting it following an external command
+
+init_soft() {
+    
+    // talkMethod ==2, default is script owner's avatar
+    if (controllerAgent == "" && talkMethod == 2) controllerAgent = llGetOwner();
+
     // optionnal chat listener
     if (chatListen) {
         // set listen channel to default if not set (even if not used)
@@ -211,9 +244,10 @@ init() {
         // setup a listener if the chatListen == TRUE
         llListenRemove(ChatlistenerHandle);
         ChatlistenerHandle = llListen(listenChannel, listen2Name, listen2ID, "");
-    }    
-    
+    }     
 }
+
+//....................................................................
 
 init_hard() {
     if (resetOnRez || resetOnScriptInit) restorePrimShape();
@@ -221,7 +255,8 @@ init_hard() {
     
 }
 
-// in case we need that
+//....................................................................
+
 restorePrimShape() {
         //llSetPrimitiveParams( [PRIM_ROTATION, llEuler2Rot(<0, PI_BY_TWO, PI + PI_BY_TWO>)] );
         //llSetPrimitiveParams( [PRIM_ROTATION, llEuler2Rot(<0, PI_BY_TWO,-PI_BY_TWO>)] );
@@ -242,8 +277,24 @@ restorePrimShape() {
    
 }
 
+//....................................................................
+
 reloadTexture() {
     if (sliderTexture == "") sliderTexture = llGetInventoryName(INVENTORY_TEXTURE, 0);
+    
+}
+
+//....................................................................
+
+loadNotecard() {
+    dbg("loadNotecard not yet implemented");
+    init();   
+}
+
+//....................................................................
+
+saveNotecard() {
+    dbg("saveNotecard not yet implemented");
     
 }
 
@@ -273,23 +324,76 @@ announceResult(integer eventType) {                         // eventType :  0 ->
 }
 
 
-executeOrder(string order, vector bob) {
-}
-
 
 executeOrder(string mesg) {
     // 1 - parse order
     list tmpOrder = llParseString2List(mesg, " ", ""); 
     string command = (string)llList2List(tmpOrder, 0, 0);
-    string argument = (string)llList2List(tmpOrder, 1, 1);
+    string arg = (string)llList2List(tmpOrder, 1, 1);
     
     // 2 - execute order  
-    if (order == "tellPosition") announceResult(2); // slider reports its position (to whomever in the universe, listens)
-    else if (order == "setRange") {                 // slider answers with
-        vector
-    } 
+    if (command == "tellPosition") announceResult(2); // slider reports its position (to whomever in the universe, listens)
     //else if (order == "savePresets")                // slider saves presets in notecard
-    else if (order == "init") init();
+    else if (command == "init")         init();
+    else if (command == "initHard")     init_hard();
+    else if (command == "reload")       loadNotecard();
+    else if (command == "save")         saveNotecard();
+    else if (command == "textOnOff"){
+        if ( (integer)arg) textOn = TRUE;
+        else textOn = FALSE;
+    }
+    else if (command == "primCon"){
+        if ( (integer)arg) primCon = TRUE;
+        else primCon = FALSE;
+    }
+    else if (command == "disableDrag"){
+        if ( (integer)arg) disableDrag = TRUE;
+        else disableDrag = FALSE;
+    }    
+
+    else if (command == "regionWide"){
+        if ( (integer)arg) regionWide = TRUE;
+        else regionWide = FALSE;
+        init_soft();
+    } 
+    else if (command == "chatListen"){
+        if ( (integer)arg) chatListen = TRUE;
+        else chatListen = FALSE;
+        init_soft();
+    }     
+    else if (command == "chatListen"){
+        if ( (integer)arg) chatListen = TRUE;
+        else chatListen = FALSE;
+        init_soft();
+    }        
+    else if (command == "listenChannel") {
+        listenChannel = (integer)arg;
+        init_soft();
+    }
+    else if (command == "listen2Name") {
+        listen2Name = arg;
+        init_soft();
+    }
+    else if (command == "listen2ID") {
+        listen2ID = (key)arg;
+        init_soft();
+    }        
+    else if (command == "controllerAgent") controllerAgent = (key)arg;
+    else if (command == "HUDchannel") HUDchannel = (integer)arg;
+    else if (command == "linkedTarget") linkedTarget = (integer)arg;
+    else if (command == "talkMethod") talkMethod = (integer)arg;
+    else if (command == "scaleUnit") scaleUnit = arg;
+    else if (command == "limits") {
+        limits = (vector)arg;
+        updateColorGlobs(FALSE);
+    }
+    else if (command == "setRange") {
+        vector tmpvect = (vector)arg;
+        minScale = tmpvect.x;
+        maxScale = tmpvect.y;
+        updateColorGlobs(FALSE);
+    }
+        
 
 }
 
@@ -311,12 +415,12 @@ updateCoords() {    // called on touch() and touch_end() events
 
 
 updateColorGlobs(integer init) { //don't update prim color if init == TRUE
-    if (percent < slowLimit) {
+    if (percent < limits.x) {
         textColor = <0.5,0.5,1>;
         primColor =  <0.8,0.8,1>;
         
     }
-    else if (percent > safeLimit) {
+    else if (percent > limits.y) {
         textColor = <1,0.2,0.2>;
         primColor =  <1,0.8,0.8>;
     }
@@ -326,7 +430,7 @@ updateColorGlobs(integer init) { //don't update prim color if init == TRUE
     }
     
     if (textOn) llSetText(convert() + scaleUnit, textColor,1);
-    if (primCOn && !init) llSetColor(primColor, ALL_SIDES);    
+    if (primCon && !init) llSetColor(primColor, ALL_SIDES);    
 
 }
 
@@ -418,7 +522,7 @@ default
                                                         //                    (otherwise handled by touch() event)
             //llSay(0, "end touch"); 
             llOffsetTexture(0.5 - primPos.x, 0, 5);
-            if (primCOn) llSetColor(<1,1,1>, ALL_SIDES);
+            if (primCon) llSetColor(<1,1,1>, ALL_SIDES);
             updateCoords();
             updateColorGlobs(FALSE);
             announceResult(1);
