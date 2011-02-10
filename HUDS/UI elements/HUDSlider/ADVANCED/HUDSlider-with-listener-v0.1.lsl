@@ -23,6 +23,7 @@
 //                  - tellPosition                  //reports slider's position
 //                  - hideSL                        //make slider transparent
 //                  - showSL                        //restore slider's visibility
+//                  - tellState                     //slider reports its state ("initializing" or "ready") 
 //
 //                  - init                          //reset slider's params
 //                  - initHard                      //reset all slider's params (including prim shape)
@@ -142,6 +143,10 @@ integer regionWide = FALSE;             // --> TRUE : use llRegionSay instead of
 key controllerAgent = "";               // --> key of avatar to report to if talkMethod is set to "2"
                                         //     (default is script owner)
 
+integer announceState = FALSE;          // TRUE : slider automatically announces its state ("initializing" or "ready")
+                                        // warning : it's up to you to differentiate between this message and the slider's
+                                        //           current position messages
+
 
 // 2 - LISTEN
                                         // script listens to llMessageLinked by default, as this does not
@@ -158,7 +163,7 @@ key     listen2ID;                      // only listen to the prim with this UUI
 
 //......
 // debug
-integer debug = TRUE;           
+integer debug = FALSE;           
 
                                  
 //....................................................................
@@ -173,11 +178,14 @@ key me;
 string meName;
 float converted;            // converted output value in case minScale/maxScale are used
 integer ChatlistenerHandle;
+integer SLready = FALSE;      // becomes TRUE when slider is ready
 //____________________________________________________________________
 //                          Initialization
 //....................................................................
 
 init() {
+    SLready = FALSE;
+    if (announceState) announce("initializing");
     llSetAlpha(0, ALL_SIDES);
     llSetText("", <1,1,1>,1);
     reloadTexture();
@@ -234,6 +242,8 @@ init() {
     
     init_soft();
     updateSliderAppearance();
+    SLready = TRUE;
+    if (announceState) announce("ready");
 }
 
 //....................................................................
@@ -318,21 +328,20 @@ announceResult(integer eventType) {                         // eventType :  0 ->
                                                             //              2 --> from executeOrder()
     string result = convert();
     // from touch(), and method is NOT llInstantMessage()
-    if          (eventType == 0 && talkMethod != 2) {       
-        if          (talkMethod == 0)  llMessageLinked(linkedTarget, 0, meName, result);
-        else if (regionWide)                    llRegionSay(HUDchannel, result);
-        else                                    llSay(HUDchannel, result);   
-    // from touch_end() event
-    } else if   (eventType == 1 || eventType == 2) {
-        if          (talkMethod == 0)  llMessageLinked(linkedTarget, 0, meName, result);
-        else if     (talkMethod == 2)  llInstantMessage(controllerAgent, result);
-        else if     (regionWide)                llRegionSay(HUDchannel, result);
-        else                                    llSay(HUDchannel, result);        
+    if          (eventType == 0 && talkMethod != 2) announce(result);  
+    // from touch_end() event or executeOrder()
+    else if     (eventType == 1 || eventType == 2) announce(result);
     // unknown eventType
-    } else return;
+    else return;
 }
 
 
+announce(string tellthem) {
+        if          (talkMethod == 0)  llMessageLinked(linkedTarget, 0, meName, tellthem);
+        else if     (talkMethod == 2)  llInstantMessage(controllerAgent, tellthem);
+        else if     (regionWide)                llRegionSay(HUDchannel, tellthem);
+        else                                    llSay(HUDchannel, tellthem);            
+}
 
 executeOrder(string mesg) {
     // 1 - parse order
@@ -352,6 +361,10 @@ executeOrder(string mesg) {
         llSetText("",<1,1,1>,0);   
     }
     else if (command == "showSL") updateSliderAppearance();
+    else if (command == "tellState") {
+        if (SLready) announce("ready");
+        else announce("initializing");   
+    }
     else if (command == "textOnOff"){
         if ( (integer)arg) textOn = TRUE;
         else textOn = FALSE;
