@@ -21,6 +21,8 @@
 //                Valid commands are :
 //
 //                  - tellPosition                  //reports slider's position
+//                  - hideSL                        //make slider transparent
+//                  - showSL                        //restore slider's visibility
 //
 //                  - init                          //reset slider's params
 //                  - initHard                      //reset all slider's params (including prim shape)
@@ -48,6 +50,8 @@
 //                  - listenChannel integer
 //                  - listen2Name   string
 //                  - listen2ID     key
+//
+//                  - debug         boolean
 //
 //              * Notecard-DRIVEN : you need to initialize this slider script with an
 //                appropriate notecard (see below)
@@ -119,7 +123,6 @@ float minScale = -200;
 float maxScale = 1800;
 string scaleUnit = " meters";   // change to whatever your scale unit is, or ""
 integer showDecimals = FALSE;   // true to show decimals in hover text (2 decimals)
-
 //..............
 // communication
 
@@ -175,6 +178,8 @@ integer ChatlistenerHandle;
 //....................................................................
 
 init() {
+    llSetAlpha(0, ALL_SIDES);
+    llSetText("", <1,1,1>,1);
     reloadTexture();
     
     llSetTexture(TEXTURE_TRANSPARENT,0);
@@ -227,8 +232,8 @@ init() {
     me = llGetKey();
     meName = llKey2Name(me);
     
-   init_soft();
-    
+    init_soft();
+    updateSliderAppearance();
 }
 
 //....................................................................
@@ -342,6 +347,11 @@ executeOrder(string mesg) {
     else if (command == "initHard")     init_hard();
     else if (command == "reload")       loadNotecard();
     else if (command == "save")         saveNotecard();
+    else if (command == "hideSL") {
+        llSetAlpha(0, ALL_SIDES);
+        llSetText("",<1,1,1>,0);   
+    }
+    else if (command == "showSL") updateSliderAppearance();
     else if (command == "textOnOff"){
         if ( (integer)arg) textOn = TRUE;
         else textOn = FALSE;
@@ -402,6 +412,7 @@ executeOrder(string mesg) {
         updateSliderAppearance();
         dbg((string)tmpvect);
     }
+    else if (command == "debug") debug = (integer)arg;
     else dbg("Unknown command");
         
 
@@ -424,7 +435,8 @@ updateCoords() {    // called on touch() and touch_end() events
 }
 
 
-updateSliderAppearance() { //don't update prim color if init == TRUE
+updateSliderAppearance() { 
+    llSetAlpha(1, ALL_SIDES);
     if (percent < limits.x) {
         textColor = <0.5,0.5,1>;
         primColor =  <0.8,0.8,1>;
@@ -508,7 +520,6 @@ default
     state_entry()
     {
         init_hard(); 
-        updateSliderAppearance();
         dbg(FreeMem());      
     }
     
